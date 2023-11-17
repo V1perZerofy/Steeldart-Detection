@@ -1,46 +1,39 @@
 import cv2
 
-# Load an image
-image_path = 'input\DartVonSchrank.jpeg'
-image = cv2.imread(image_path)
-image = cv2.resize(image, (0, 0), fx=0.375, fy=0.375)
+# Load the images
+image_no_darts = cv2.imread('input/withoutDarts.jpeg')
+image_with_darts = cv2.imread('input/withDarts.jpeg')
+#resize the images
+image_no_darts = cv2.resize(image_no_darts, (500, 500))
+image_with_darts = cv2.resize(image_with_darts, (500, 500))
+#show the images
+cv2.imshow('No Darts', image_no_darts)
+cv2.imshow('With Darts', image_with_darts)
 
-# Display the image
-cv2.imshow('Dartboard', image)
-cv2.waitKey(0)
-cv2.destroyAllWindows()
+# Ensure both images are the same size
+image_no_darts = cv2.resize(image_no_darts, (image_with_darts.shape[1], image_with_darts.shape[0]))
 
-def detect_darts(image):
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    #show the gray image to debug
-    cv2.imshow('gray', gray)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    #show the blurred image to debug
-    cv2.imshow('blurred', blurred)
-    edged = cv2.Canny(blurred, 50, 200)
-    #show the edged image to debug
-    cv2.imshow('edged', edged)
+gray_no_darts = cv2.cvtColor(image_no_darts, cv2.COLOR_BGR2GRAY)
+gray_with_darts = cv2.cvtColor(image_with_darts, cv2.COLOR_BGR2GRAY)
 
-    # Find contours in the edged image
-    contours, _ = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+blurred_no_darts = cv2.GaussianBlur(gray_no_darts, (5, 5), 0)
+blurred_with_darts = cv2.GaussianBlur(gray_with_darts, (5, 5), 0)
 
-    # Loop over the contours
-    for c in contours:
-        # Approximate the contour
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.02 * peri, True)
+difference = cv2.absdiff(blurred_no_darts, blurred_with_darts)
+cv2.imshow('Difference', difference)
 
-        # If the shape is elongated, it could be a dart
-        if len(approx) > 3 and len(approx) < 5:  # Adjust based on your observations
-            (x, y, w, h) = cv2.boundingRect(approx)
-            aspect_ratio = w / float(h)
-            if aspect_ratio > 1.2:  # Adjust this value based on the orientation and shape of the darts
-                cv2.drawContours(image, [approx], -1, (0, 255, 0), 2)
+_, thresh = cv2.threshold(difference, 25, 255, cv2.THRESH_BINARY)
+cv2.imshow('Thresh', thresh)
 
-    return image
+contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-# Process the image and show the result
-processed_image = detect_darts(image)
-cv2.imshow('Dart Detection', processed_image)
+
+for c in contours:
+    # You can add more conditions to filter out noise
+    if cv2.contourArea(c) > 150:  # min_area should be set based on your observations
+        (x, y, w, h) = cv2.boundingRect(c)
+        cv2.rectangle(image_with_darts, (x, y), (x + w, y + h), (0, 255, 0), 2)
+
+cv2.imshow('Darts Detected', image_with_darts)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
