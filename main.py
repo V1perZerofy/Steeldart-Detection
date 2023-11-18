@@ -1,43 +1,79 @@
 import cv2
 
-# Load the images
+def preprocess_image(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+    return blurred
+
+def detect_contours(preprocessed_image, threshold_value):
+    _, thresh = cv2.threshold(preprocessed_image, threshold_value, 255, cv2.THRESH_BINARY)
+    #show threshold image
+    cv2.imshow('Threshold', thresh)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    #show contours
+    cv2.drawContours(preprocessed_image, contours, -1, (0, 255, 0), 2)
+    return contours
+
+def rect_overlaps_or_close(rect1, rect2, max_distance):
+    x1, y1, w1, h1 = rect1
+    x2, y2, w2, h2 = rect2
+
+    close_in_x = abs((x1 + w1 / 2) - (x2 + w2 / 2)) <= max_distance + (w1 + w2) / 2
+    close_in_y = abs((y1 + h1 / 2) - (y2 + h2 / 2)) <= max_distance + (h1 + h2) / 2
+    return close_in_x and close_in_y
+
+def merge_two_rects(rect1, rect2):
+    x1, y1, w1, h1 = rect1
+    x2, y2, w2, h2 = rect2
+
+    x = min(x1, x2)
+    y = min(y1, y2)
+    w = max(x1 + w1, x2 + w2) - x
+    h = max(y1 + h1, y2 + h2) - y
+    return (x, y, w, h)
+
+def merge_contours(contours, max_distance):
+    rects = [cv2.boundingRect(c) for c in contours]
+    merged_rects = []
+
+    while rects:
+        rect = rects.pop(0)
+        overlap = False
+
+        for idx, other_rect in enumerate(merged_rects):
+            if rect_overlaps_or_close(rect, other_rect, max_distance):
+                merged_rects[idx] = merge_two_rects(rect, other_rect)
+                overlap = True
+                break
+
+        if not overlap:
+            merged_rects.append(rect)
+
+    return merged_rects
+
+# Load images
 image_no_darts = cv2.imread('input/withoutDarts.jpeg')
 image_with_darts = cv2.imread('input/withDarts.jpeg')
-#resize the images
-image_no_darts = cv2.resize(image_no_darts, (500, 500))
-image_with_darts = cv2.resize(image_with_darts, (500, 500))
-#show the images
-cv2.imshow('No Darts', image_no_darts)
-cv2.imshow('With Darts', image_with_darts)
+#resize images
+image_no_darts = cv2.resize(image_no_darts, (0,0), fx=0.375, fy=0.375)
+image_with_darts = cv2.resize(image_with_darts, (0,0), fx=0.375, fy=0.375)
 
-min_area = 0  # Adjust as needed
+# Preprocess images
+preprocessed_no_darts = preprocess_image(image_no_darts)
+preprocessed_with_darts = preprocess_image(image_with_darts)
 
-# Ensure both images are the same size
-image_no_darts = cv2.resize(image_no_darts, (image_with_darts.shape[1], image_with_darts.shape[0]))
+# Detect contours
+contours = detect_contours(cv2.absdiff(preprocessed_no_darts, preprocessed_with_darts), threshold_value=160)
 
-gray_no_darts = cv2.cvtColor(image_no_darts, cv2.COLOR_BGR2GRAY)
-gray_with_darts = cv2.cvtColor(image_with_darts, cv2.COLOR_BGR2GRAY)
-difference = cv2.absdiff(gray_no_darts, gray_with_darts)
+# Merge nearby contours
+merged_rects = merge_contours(contours, max_distance=125)
 
-_, thresh = cv2.threshold(difference, 200, 255, cv2.THRESH_BINARY)
+# Draw merged rectangles on the original image
+for rect in merged_rects:
+    x, y, w, h = rect
+    cv2.rectangle(image_with_darts, (x, y), (x + w, y + h), (0, 255, 0), 2)
 
-contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-for c in contours:
-    # You might still need to filter based on size or shape
-    if cv2.contourArea(c) > min_area:  # min_area as determined earlier
-        (x, y, w, h) = cv2.boundingRect(c)
-        cv2.rectangle(image_with_darts, (x, y), (x + w, y + h), (0, 255, 0), 2)
-
-#combine bigger clusters of contours into one
-
+# Display the result
 cv2.imshow('Darts Detected', image_with_darts)
 cv2.waitKey(0)
 cv2.destroyAllWindows()
-
-#print cords of darts
-for c in contours:
-    # You might still need to filter based on size or shape
-    if cv2.contourArea(c) > min_area:  # min_area as determined earlier
-        (x, y, w, h) = cv2.boundingRect(c)
-        print("Dart at: " + str(x) + ", " + str(y))
